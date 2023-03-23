@@ -160,7 +160,7 @@ fn main() {
 
             starmap: &starmap_texture,
             rgba_noise: &rgba_noise_tex,
-            // organic_tex: &organic_texture_tex,
+            organic_tex: &organic_texture_tex,
         }, &Default::default()).unwrap();
         target.finish().unwrap();
     });

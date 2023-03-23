@@ -4,11 +4,13 @@
 #define MAX_DIST 10.0
 #define MIN_DIST 0.01
 #define EPSILON 0.01
-#define PI 3.1415926
+#define PI 3.1415927
 
 #define SPEED 0.5
 #define STEPS 12.0
 #define SIZE 0.3
+
+#define ITERATIONS 40
 
 in vec2 fragCoord;
 out vec4 fragColor;
@@ -23,7 +25,7 @@ uniform float camera_focal_length;
 
 uniform sampler2D starmap;
 uniform sampler2D rgba_noise;
-// uniform sampler2D organic_tex;
+uniform sampler2D organic_tex;
 
 mat4 rotate_mat(vec3 theta) {
     float yaw = theta.x;
@@ -168,198 +170,147 @@ vec4 background(vec3 ray) {
     return nebulae;
 }
 
-vec4 raymarch_disk(vec3 ray, vec3 pos) {
-    float disc_radius = 0.6;
-    float disc_width = 1.3;
+float sd_torus(vec3 p, vec2 t) {
+    vec2 q = vec2(length(p.xz) - t.x, p.y);
+    return length(q)-t.y;
+}
+
+float sd_sphere(vec3 p, float r) {
+  return length(p) - r;
+}
+
+
+void haze(inout vec3 color, float alpha, vec3 pos) {
+    vec2 t = vec2(1.0, 0.01);
+
+    float torus_dist = length(sd_torus(pos + vec3(0.0, -0.05, 0.0), t));
+
+    float bloom_disc = 1.0 / (pow(torus_dist, 2.0) + 0.001);
+    vec3 col = vec3(1.0, 1.0, 1.0);
+    bloom_disc *= length(pos) < 0.5 ? 0.0 : 1.0;
+
+    color += 0.01 * col * bloom_disc * (2.9 / float(ITERATIONS)) * (1.0 - alpha * 1.0);
+}
+
+void accretion_disc(inout vec3 color, inout float alpha, vec3 pos) {
+    float disc_radius = 3.2;
+    float disc_width = 5.3;
     float disc_inner = disc_radius - disc_width * 0.5;
     float disc_outer = disc_radius + disc_width * 0.5;
-    vec3 disc_normal = vec3(0.0, 1.0, 0.0);
+    
+    vec3 origin = vec3(0.0, 0.0, 0.0);
+    vec3 disc_normal = normalize(vec3(0.0, 1.0, 0.0));
     float disc_thickness = 0.1;
 
-    float center_dist = length(pos);
-    float disc_dist = dot(disc_normal, pos);
-
+    float center_dist = distance(pos, origin);
+    float disc_dist = dot(disc_normal, pos - origin);
+    
     float rad_grad = 1.0 - clamp((center_dist - disc_inner) / disc_width * 0.5, 0.0, 1.0);
-    float coverage = pcurve(rad_grad, 4.0, 0.9);
-    disc_thickness *= rad_grad;
 
-    vec3 dust_lit = vec3(1.0);
-    vec3 dust_dark = vec3(0.0);
+    float coverage = pcurve(rad_grad, 4.0, 0.9);
+
+    disc_thickness *= rad_grad;
+    coverage *= clamp(1.0 - abs(disc_dist) / disc_thickness, 0.0, 1.0);
+
+    vec3 dust_lit = vec3(1.0, 1.0, 1.0);
+    vec3 dust_dark = vec3(0.0, 0.0, 0.0);
 
     float dust_glow = 1.0 / (pow(1.0 - rad_grad, 2.0) * 290.0 + 0.002);
-    vec3 dust_color = dust_lit * dust_glow * 8.2;
+    vec3 dust_col = dust_lit * dust_glow * 8.2;
+
     coverage = clamp(coverage * 0.7, 0.0, 1.0);
 
+
     float fade = pow((abs(center_dist - disc_inner) + 0.4), 4.0) * 0.04;
-    float bloom_factor = 1.0 / (pow(disc_dist, 2.0) * 40.0 + fade + 0.000002);
+    float bloom_factor = 1.0 / (pow(disc_dist, 2.0) * 40.0 + fade + 0.00002);
     vec3 b = dust_lit * pow(bloom_factor, 1.5);
-
+    
     b *= mix(vec3(1.7, 1.1, 1.0), vec3(0.5, 0.6, 1.0), vec3(pow(rad_grad, 2.0)));
-    b *= mix(vec3(1.7, 0.5, 0.1), vec3(1.0, 1.0, 1.0), vec3(pow(rad_grad, 0.5)));
+    b *= mix(vec3(1.7, 0.5, 0.1), vec3(1.0), vec3(pow(rad_grad, 0.5)));
 
-    dust_color = mix(dust_color, b * 150.0, clamp(1.0 - coverage * 1.0, 0.0, 1.0));
+    dust_col = mix(dust_col, b * 150.0, clamp(1.0 - coverage * 1.0, 0.0, 1.0));
     coverage = clamp(coverage + bloom_factor * bloom_factor * 0.1, 0.0, 1.0);
+    
+    if (coverage < 0.01) return;   
+    
+    vec3 rad_coords;
+    rad_coords.x = center_dist * 1.5 + 0.55;
+    rad_coords.y = atan2(-pos.x, -pos.z) * 1.5;
+    rad_coords.z = disc_dist * 1.5;
 
-    vec3 rad_coords = vec3(center_dist * 1.5 + 0.55,
-                           atan2(-pos.x, -pos.z) * 1.5,
-                           disc_dist * 1.5);
     rad_coords *= 0.95;
-
+    
+    float speed = 1.0;
+    
     float n1 = 1.0;
-    vec3 rc = rad_coords + 0.0;             rc.y += time * SPEED;
-    n1 *= noise(rc * 3.0) * 0.5 + 0.5;      rc.y -= time * SPEED;
-    n1 *= noise(rc * 6.0) * 0.5 + 0.5;      rc.y += time * SPEED;
-    n1 *= noise(rc * 12.0) * 0.5 + 0.5;     rc.y -= time * SPEED;
-    n1 *= noise(rc * 24.0) * 0.5 + 0.5;     rc.y += time * SPEED;
+    vec3 rc = rad_coords + 0.0;             rc.y += time * speed;
+    n1 *= noise(rc * 3.0) * 0.5 + 0.5;      rc.y -= time * speed;
+    n1 *= noise(rc * 6.0) * 0.5 + 0.5;      rc.y += time * speed;
+    n1 *= noise(rc * 12.0) * 0.5 + 0.5;     rc.y -= time * speed;
+    n1 *= noise(rc * 24.0) * 0.5 + 0.5;     rc.y += time * speed;
 
     float n2 = 2.0;
     rc = rad_coords + 30.0;
-    n2 *= noise(rc * 3.0) * 0.5 + 0.5;      rc.y += time * SPEED;
-    n2 *= noise(rc * 6.0) * 0.5 + 0.5;      rc.y -= time * SPEED;
-    n2 *= noise(rc * 12.0) * 0.5 + 0.5;     rc.y += time * SPEED;
-    n2 *= noise(rc * 24.0) * 0.5 + 0.5;     rc.y -= time * SPEED;
-    n2 *= noise(rc * 48.0) * 0.5 + 0.5;     rc.y += time * SPEED;
-    n2 *= noise(rc * 92.0) * 0.5 + 0.5;     rc.y -= time * SPEED;
+    n2 *= noise(rc * 3.0) * 0.5 + 0.5;      rc.y += time * speed;
+    n2 *= noise(rc * 6.0) * 0.5 + 0.5;      rc.y -= time * speed;
+    n2 *= noise(rc * 12.0) * 0.5 + 0.5;     rc.y += time * speed;
+    n2 *= noise(rc * 24.0) * 0.5 + 0.5;     rc.y -= time * speed;
+    n2 *= noise(rc * 48.0) * 0.5 + 0.5;     rc.y += time * speed;
+    n2 *= noise(rc * 92.0) * 0.5 + 0.5;     rc.y -= time * speed;
 
-    dust_color *= n1 * 0.998 + 0.002;
+    dust_col *= n1 * 0.998 + 0.002;
     coverage *= n2;
-    rad_coords.y += time * SPEED * 0.5;
+    
+    rad_coords.y += time * speed * 0.5;
+    dust_col *= pow(texture(organic_tex, fract(rad_coords.yx * vec2(0.15, 0.27))).rgb, vec3(2.0)) * 4.0;
 
-    dust_color = max(vec3(0.0), dust_color);
-    coverage *= 1200.0;
+    coverage = clamp(coverage * 1200.0 / float(ITERATIONS), 0.0, 1.0);
+    dust_col = max(vec3(0.0), dust_col);
     coverage *= pcurve(rad_grad, 4.0, 0.9);
 
-    return vec4(dust_color, coverage);
-
-    // vec3 position = zeropos;
-    // float lengthpos = length(position.xz);
-    // float dist = min(0.25, lengthpos * (1.0 / SIZE) * 0.5) * SIZE * 0.4 * (1.0 / STEPS) / abs(ray.y);
-
-    // position += dist * STEPS * ray * 0.5;
-
-
-    // vec2 deltapos;
-    // deltapos.x = -zeropos.z * 0.01 + zeropos.x;
-    // deltapos.y = zeropos.x * 0.01 + zeropos.z;
-    // deltapos = normalize(deltapos - zeropos.xz);
-
-    // float parallel = dot(ray.xz, deltapos);
-    // parallel /= sqrt(lengthpos);
-    // parallel *= 0.7;
-    // float redshift = parallel;// + 0.3;
-    // redshift *= redshift;
-    // redshift = clamp(redshift, 0.0, 1.0);
-
-    // float dismix = clamp((lengthpos - SIZE * 2.0) * (1.0 / SIZE) * 0.24, 0.0, 1.0);
-    // vec3 insidecol = mix(vec3(1.0, 0.8, 0.2), vec3(0.5, 0.13, 0.02) * 0.2, dismix);
-
-    // insidecol *= mix(vec3(0.2, 0.2, 0.1), vec3(1.6, 2.4, 4.0), redshift);
-    // insidecol *= 1.25;
-    // redshift += 0.12;
-    // redshift *= redshift;
-
-    // vec4 o = vec4(0);
-    // for (int i = 0; i < STEPS; i++) {
-    //     position -= dist * ray;
-    //     float intensity = clamp(1.0 - abs((i - 0.8) * (1.0 / STEPS) * 2.0), 0.0, 1.0);
-    //     float lenpos = length(position.xz);
-    //     float distmult = 1.0;
-        
-    //     distmult *= clamp((lenpos - SIZE * 0.75) * (1.0 / SIZE) * 1.5, 0.0, 1.0);
-    //     distmult *= clamp((SIZE * 6.0 - lenpos) * (1.0 / SIZE) * 0.2, 0.0, 1.0);
-    //     distmult *= distmult;
-
-    //     float u = lenpos + time * SIZE * 0.3 + intensity * SIZE * 0.2;
-    //     vec2 xy;
-    //     float rot = mod(time * SPEED, 8192.0);
-    //     float sinr = sin(rot);
-    //     float cosr = cos(rot);
-    //     xy.x = -position.z * sinr + position.x * cosr;
-    //     xy.y = position.x * sinr + position.z * cosr;
-
-    //     float x = abs(xy.x / xy.y);
-    //     float angle = 0.02 * atan(x);
-
-    //     vec3 rad_coords = vec3(lenpos * 1.5 + 0.55
-    //                            atan2(-position.x, position.z) * 1.5
-    //                            )
-    //     float n1 = valnoise(vec2(angle, u * (1.0 / SIZE) * 0.05), f);
-    //     n1 = n1 * 0.66 + 0.33 * valnoise(vec2(angle, u * (1.0 / SIZE) * 0.05), f * 2.0);
-
-    //     float extrawidth = n1 * 1.0 * (1.0 - clamp(i * (1.0 / STEPS) * 2.0 - 1.0, 0.0, 1.0));
-    //     float alpha = clamp(n1 * (intensity + extrawidth) * ((1.0 / SIZE) * 10.0 + 0.01) * dist * distmult, 0.0, 1.0);
-
-    //     vec3 col = 2.0 * mix(vec3(0.3, 0.2, 0.15) * insidecol, insidecol, min(1.0, intensity * 2.0));
-    //     o = clamp(vec4(col * alpha + o.rgb * (1.0 - alpha), o.a * (1.0 - alpha) + alpha), vec4(0.0), vec4(1.0));
-    //     lenpos *= (1.0 / SIZE);
-    //     o.rgb += redshift * (intensity * 1.0 + 0.5) * (1.0 / STEPS) * 100.0 * distmult / (lenpos * lenpos);
-    // }
-    // o.rgb = clamp(o.rgb - 0.005, 0.0, 1.0);
-    // return o;
+    color = (1.0 - alpha) * dust_col * coverage + color;
+    alpha = (1.0 - alpha) * coverage + alpha;
 }
 
-vec4 render(vec3 rd) {
-    // vec2 angle = vec2(time * 0.1, 0.2);
-    // rd = transform(rd, vec3(angle, 0.0), vec3(0));
-    vec3 pos = camera_origin;
+vec4 render(vec3 rd, vec2 uv) {
+    const float far = 15.0;
+    vec3 bh_origin = vec3(0.0, 0.0, 0.0);
 
-    vec4 col = vec4(0.0);
-    vec4 glow = vec4(0.0);
-    vec4 out_color = vec4(100.0);
-
-    for (int disks = 0; disks < 20; disks++) {
-        for (int h = 0; h < 6; h++) {
-            float dotpos = dot(pos, pos);
-            float invdist = inversesqrt(dotpos);
-            float centdist = dotpos * invdist;
-            float stepdist = 0.92 * abs(pos.y / rd.y);
-            float farlim = centdist * 0.5;
-            float closelim = centdist * 0.1 + 0.05 * centdist * centdist * (1.0 / SIZE);
-            stepdist = min(stepdist, min(farlim, closelim));
-
-            float invdist2 = invdist * invdist;
-            float bendforce = stepdist * invdist2 * SIZE * 0.625;
-            rd = normalize(rd - (bendforce * invdist) * pos);
-            pos += stepdist * rd;
-            glow += vec4(1.2, 1.1, 1.0, 1.0) * (0.01 * stepdist * invdist2 * invdist2 * clamp(centdist * 2.0 - 1.2, 0.0, 1.0));
-        }
-
-        float dist2 = length(pos);
-        if (dist2 < SIZE * 0.1) {
-            out_color = vec4(col.rgb * col.a + glow.rgb * (1.0 - col.a), 1.0);
-            break;
-        }
-        else if (dist2 > SIZE * 1000.0) {
-            vec4 bg = background(rd);
-            out_color = vec4(col.rgb * col.a + bg.rgb * (1.0 - col.a) + glow.rgb * (1.0 - col.a), 1.0);
-            break;
-        }
-        else if (abs(pos.y) <= SIZE * 0.002) {
-            vec4 diskcol = raymarch_disk(rd, pos);
-            pos.y = 0.0;
-            pos += abs(SIZE * 0.001 / rd.y) * rd;
-            col = vec4(diskcol.rgb * (1.0 - col.a) + col.rgb, col.a + diskcol.a * (1.0 - col.a));
-        }
-    }
-
-    if (out_color.r == 100.0) out_color = vec4(col.rgb + glow.rgb * (col.a + glow.a), 1.0);
+    vec3 color = vec3(0.0, 0.0, 0.0);
+    float alpha = 0.0;
+    float dither = clamp(fract(sin(dot(uv, vec2(12.9898, 78.223))) * 43758.5453), 0.0, 1.0) * 2.0;
     
-    col = out_color;
-    // color grade
-    col.rgb = pow(col.rgb, vec3(1.5));
-    col.rgb = col.rgb / (1.0 + col.rgb);
-    col.rgb = pow(col.rgb, vec3(1.0 / 1.5));
+    vec3 raypos = camera_origin + rd * dither * far / float(ITERATIONS);
+    for (int i = 0; i < ITERATIONS; i++) {
+        // gravitational lensing
+        float singularity_dist = distance(raypos, bh_origin);
+        float warp_factor = 1.0 / (pow(singularity_dist, 2.0) + 0.000001);
+        vec3 singularity_vec = normalize(bh_origin - raypos);
+        float warp_amount = 5.0;
+        rd = normalize(rd + singularity_vec * warp_factor * warp_amount / float(ITERATIONS));
+        
+        // accretion disc
+        raypos += rd * far / float(ITERATIONS);
+        accretion_disc(color, alpha, raypos);
+        haze(color, alpha, raypos);
+    }
+    // color *= 1.0 / float(ITERATIONS) / 1.0;
 
-    col.rgb = mix(col.rgb, col.rgb * col.rgb * (3.0 - 2.0 * col.rgb), vec3(1.0));
-    col.rgb = pow(col.rgb, vec3(1.3, 1.2, 1.0));
-    col.rgb = clamp(col.rgb * 1.01, 0.0, 1.0);
-    col.rgb = pow(col.rgb, vec3(0.7 / 2.2));
-    return col;
+    color = pow(color, vec3(1.5));
+    color = color / (1.0 + color);
+    color = pow(color, vec3(1.0 / 1.5));
+    color = mix(color, color * color * (3.0 - 2.0 * color), vec3(1.0));
+    color = pow(color, vec3(1.3, 1.2, 1.0));
+    color = clamp(color * 1.01, 0.0, 1.0);
+    color = pow(color, vec3(0.7 / 2.2));
+
+    color += background(rd).rgb;
+    return vec4(clamp(color, vec3(0.0), vec3(1.0)), 1.0);
 }
 
 void main() {
     vec2 uv = ((fragCoord * resolution.xy) - 0.5 * resolution.xy) / resolution.y;
     vec3 ray_direction = camera * normalize(vec3(uv, camera_focal_length));
-    vec4 color = render(ray_direction);
+    vec4 color = render(ray_direction, uv);
     fragColor = color;
 }
