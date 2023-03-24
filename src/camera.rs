@@ -1,5 +1,5 @@
-#[path = "primitive.rs"] mod primitive;
-pub use primitive::*;
+#[path = "vec3.rs"] mod vec3;
+pub use vec3::*;
 
 
 
@@ -16,7 +16,7 @@ pub struct Camera {
 impl Camera {
     pub fn new(origin: Point3, target: Point3, roll: f32, focal_length: f32) -> Self {
         let w = (target - origin).normalize();
-        let p = Vec3::new(roll.sin(), roll.cos(), 0.0);
+        let p = vec3(roll.sin(), roll.cos(), 0.0);
         let u = w.cross(p).normalize();
         let v = u.cross(w);
         Self {
@@ -31,7 +31,7 @@ impl Camera {
         self.u = self.w.cross(self.v).normalize();
     }
     pub fn rotate_y(&mut self, delta: f32) {
-        self.w = (self.w + self.v * -delta).normalize();
+        self.w = (self.w + self.v * delta).normalize();
         self.v = self.u.cross(self.w);
     }
     pub fn move_x(&mut self, delta: f32) {

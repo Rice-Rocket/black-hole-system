@@ -7,46 +7,44 @@ use std::io::Cursor;
 
 
 use program::*;
-use scene::*;
+use camera::*;
 #[path = "program.rs"] mod program;
-#[path = "scene.rs"] mod scene;
+#[path = "camera.rs"] mod camera;
 
 
-fn basic_scene() -> Scene {
-    let mut scene = Scene::new();
-    scene.set_camera(Camera::new(
+fn set_camera() -> Camera {
+    return Camera::new(
         point3(3., 0., 2.),
         vec3(0., 0., -1.),
         0.0, 1.0
-    ));
-    return scene
+    );
 }
 
-fn input(scene: &mut Scene, held_keys: &[bool; 255], prev_keys: &[bool; 255]) {
+fn input(cam: &mut Camera, held_keys: &[bool; 255], prev_keys: &[bool; 255]) {
     let movement_speed = 0.04;
     let rotate_speed = 0.03;
 
     if held_keys[glutin::event::VirtualKeyCode::A as usize] {
-        scene.camera.move_x(movement_speed); }
+        cam.move_x(movement_speed); }
     if held_keys[glutin::event::VirtualKeyCode::D as usize] {
-        scene.camera.move_x(-movement_speed); }
+        cam.move_x(-movement_speed); }
     if held_keys[glutin::event::VirtualKeyCode::W as usize] {
-        scene.camera.move_z(movement_speed); }
+        cam.move_z(movement_speed); }
     if held_keys[glutin::event::VirtualKeyCode::S as usize] {
-        scene.camera.move_z(-movement_speed); }
+        cam.move_z(-movement_speed); }
     if held_keys[glutin::event::VirtualKeyCode::Q as usize] {
-        scene.camera.move_y(movement_speed); }
+        cam.move_y(movement_speed); }
     if held_keys[glutin::event::VirtualKeyCode::E as usize] {
-        scene.camera.move_y(-movement_speed); }
+        cam.move_y(-movement_speed); }
 
     if held_keys[glutin::event::VirtualKeyCode::Left as usize] {
-        scene.camera.rotate_x(rotate_speed); }
+        cam.rotate_x(rotate_speed); }
     if held_keys[glutin::event::VirtualKeyCode::Right as usize] {
-        scene.camera.rotate_x(-rotate_speed); }
+        cam.rotate_x(-rotate_speed); }
     if held_keys[glutin::event::VirtualKeyCode::Up as usize] {
-        scene.camera.rotate_y(rotate_speed); }
+        cam.rotate_y(rotate_speed); }
     if held_keys[glutin::event::VirtualKeyCode::Down as usize] {
-        scene.camera.rotate_y(-rotate_speed); }
+        cam.rotate_y(-rotate_speed); }
 }
 
 
@@ -58,7 +56,7 @@ fn main() {
     let display = glium::Display::new(wb, cb, &event_loop).unwrap();
     let (vertex_buffer, indices, program) = load_program(&display);
 
-    let mut scene = basic_scene();
+    let mut cam = set_camera();
     let start_time = std::time::SystemTime::now();
     let mut time = 0f32;
     let mut held_keys = [false; 255];
@@ -127,7 +125,7 @@ fn main() {
                 };
             },
             glutin::event::Event::MainEventsCleared => {
-                input(&mut scene, &held_keys, &prev_keys);
+                input(&mut cam, &held_keys, &prev_keys);
             },
             glutin::event::Event::NewEvents(cause) => { match cause {
                     glutin::event::StartCause::ResumeTimeReached { .. } => {
@@ -154,9 +152,9 @@ fn main() {
             resolution: [display.get_framebuffer_dimensions().0 as f32, display.get_framebuffer_dimensions().1 as f32],
             mouse: mouse,
 
-            camera: scene.camera.as_data(),
-            camera_origin: scene.camera.origin.to_tuple(),
-            camera_focal_length: scene.camera.focal_length,
+            camera: cam.as_data(),
+            camera_origin: cam.origin.to_tuple(),
+            camera_focal_length: cam.focal_length,
 
             starmap: &starmap_texture,
             rgba_noise: &rgba_noise_tex,
