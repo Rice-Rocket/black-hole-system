@@ -304,8 +304,8 @@ vec4 render(vec3 rd, vec2 uv) {
     color = clamp(color * 1.01, 0.0, 1.0);
     color = pow(color, vec3(0.7 / 2.2));
 
-    color += background(rd).rgb;
-    return vec4(clamp(color, vec3(0.0), vec3(1.0)), 1.0);
+    color += (alpha > 0.1 || length(raypos - bh_origin) < 0.5) ? vec3(0.0) : background(rd).rgb;
+    return vec4(clamp(color, 0.0, 1.0), 1.0);
 }
 
 void main() {

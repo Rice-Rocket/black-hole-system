@@ -18,7 +18,7 @@ impl Camera {
         let w = (target - origin).normalize();
         let p = Vec3::new(roll.sin(), roll.cos(), 0.0);
         let u = w.cross(p).normalize();
-        let v = u.cross(w).normalize();
+        let v = u.cross(w);
         Self {
             origin: origin,
             p: p,
@@ -28,13 +28,11 @@ impl Camera {
     }
     pub fn rotate_x(&mut self, delta: f32) {
         self.w = (self.w + self.u * -delta).normalize();
-        self.u = self.w.cross(self.p).normalize();
-        self.v = self.u.cross(self.w).normalize();
+        self.u = self.w.cross(self.v).normalize();
     }
     pub fn rotate_y(&mut self, delta: f32) {
         self.w = (self.w + self.v * -delta).normalize();
-        self.u = self.w.cross(self.p).normalize();
-        self.v = self.u.cross(self.w).normalize();
+        self.v = self.u.cross(self.w);
     }
     pub fn move_x(&mut self, delta: f32) {
         let left = Vec3::new(0., 1., 0.).cross(self.w).normalize() * delta;
@@ -48,9 +46,9 @@ impl Camera {
     }
     pub fn as_data(&self) -> [[f32; 3]; 3] {
         [
-            [self.u.x, self.v.x, self.w.x],
-            [self.u.y, self.v.y, self.w.y],
-            [self.u.z, self.v.z, self.w.z],
+            [self.u.x, self.u.y, self.u.z],
+            [self.v.x, self.v.y, self.v.z],
+            [self.w.x, self.w.y, self.w.z],
         ]
     }
 }

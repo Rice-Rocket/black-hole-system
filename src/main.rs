@@ -43,10 +43,10 @@ fn input(scene: &mut Scene, held_keys: &[bool; 255], prev_keys: &[bool; 255]) {
         scene.camera.rotate_x(rotate_speed); }
     if held_keys[glutin::event::VirtualKeyCode::Right as usize] {
         scene.camera.rotate_x(-rotate_speed); }
-    // if held_keys[glutin::event::VirtualKeyCode::Up as usize] {
-    //     scene.camera.rotate_y(rotate_speed); }
-    // if held_keys[glutin::event::VirtualKeyCode::Down as usize] {
-    //     scene.camera.rotate_y(-rotate_speed); }
+    if held_keys[glutin::event::VirtualKeyCode::Up as usize] {
+        scene.camera.rotate_y(rotate_speed); }
+    if held_keys[glutin::event::VirtualKeyCode::Down as usize] {
+        scene.camera.rotate_y(-rotate_speed); }
 }
 
 
