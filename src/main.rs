@@ -45,6 +45,7 @@ fn input(cam: &mut Camera, held_keys: &[bool; 255], prev_keys: &[bool; 255]) {
         cam.rotate_y(rotate_speed); }
     if held_keys[glutin::event::VirtualKeyCode::Down as usize] {
         cam.rotate_y(-rotate_speed); }
+
 }
 
 

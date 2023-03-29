@@ -1,7 +1,7 @@
 #version 410
 
-#define MAX_STEPS 64
-#define MAX_DIST 10.0
+#define MAX_STEPS 40
+#define MAX_DIST 128.0
 #define MIN_DIST 0.01
 #define EPSILON 0.01
 #define PI 3.1415927
@@ -10,7 +10,8 @@
 #define STEPS 12.0
 #define SIZE 0.3
 
-#define ITERATIONS 40
+#define MIN_STEP_SIZE 0.375
+#define STEP_CURVATURE_FACTOR 4.0
 
 in vec2 fragCoord;
 out vec4 fragColor;
@@ -109,6 +110,10 @@ float atan2(float y, float x)
     }
 }
 
+float length_squared(vec3 x) {
+    return dot(x, x);
+}
+
 float valnoise(vec2 p, float f) {
     float bl = hash(floor(p * f + vec2(0.0, 0.0)));
     float br = hash(floor(p * f + vec2(1.0, 0.0)));
@@ -179,6 +184,24 @@ float sd_sphere(vec3 p, float r) {
   return length(p) - r;
 }
 
+vec2 sphere_intersect(vec3 ro, vec3 rd, vec3 center, float radius) {
+    vec3 oc = ro - center;
+    float a = dot(rd, rd);
+    float half_b = dot(oc, rd);
+    float c = dot(oc, oc) - radius * radius;
+
+    float discriminant = half_b * half_b - a * c;
+    if (discriminant < 0.0) return vec2(0.0);
+    float sqrtd = sqrt(discriminant);
+
+    float root = (-half_b - sqrtd) / a;
+    // if (root < t_min || t_max < root) {
+    //     root = (-half_b + sqrtd) / a;
+    //     if (root < t_min || t_max < root) return vec2(0.0);
+    // }
+    return vec2(1.0, root);
+}
+
 
 void haze(inout vec3 color, float alpha, vec3 pos) {
     vec2 t = vec2(1.0, 0.01);
@@ -189,7 +212,7 @@ void haze(inout vec3 color, float alpha, vec3 pos) {
     vec3 col = vec3(1.0, 1.0, 1.0);
     bloom_disc *= length(pos) < 0.5 ? 0.0 : 1.0;
 
-    color += 0.01 * col * bloom_disc * (2.9 / float(ITERATIONS)) * (1.0 - alpha * 1.0);
+    color += 0.01 * col * bloom_disc * (2.9 / float(MAX_STEPS)) * (1.0 - alpha * 1.0);
 }
 
 void accretion_disc(inout vec3 color, inout float alpha, vec3 pos) {
@@ -264,7 +287,7 @@ void accretion_disc(inout vec3 color, inout float alpha, vec3 pos) {
     rad_coords.y += time * speed * 0.5;
     dust_col *= pow(texture(organic_tex, fract(rad_coords.yx * vec2(0.15, 0.27))).rgb, vec3(2.0)) * 4.0;
 
-    coverage = clamp(coverage * 1200.0 / float(ITERATIONS), 0.0, 1.0);
+    coverage = clamp(coverage * 1200.0 / float(MAX_STEPS), 0.0, 1.0);
     dust_col = max(vec3(0.0), dust_col);
     coverage *= pcurve(rad_grad, 4.0, 0.9);
 
@@ -272,29 +295,75 @@ void accretion_disc(inout vec3 color, inout float alpha, vec3 pos) {
     alpha = (1.0 - alpha) * coverage + alpha;
 }
 
+
+vec4 scene(vec3 p) {
+    vec4 res = vec4(1.0, 0.5, 0.25, sd_sphere(p - vec3(7.0, 1.0, 3.0), 1.0));
+    return res;
+}
+
+
+vec4 raymarch_scene(vec3 ro, vec3 rd) {
+    float dist = 0;
+    vec4 res = vec4(-1.0);
+
+    for (int i = 0; i < MAX_STEPS && dist <= MAX_DIST; i++) {
+        vec3 p = ro + rd * dist;
+        vec4 ds = scene(p);
+        if (abs(ds.w) < (MIN_DIST * dist)) {
+            res.w = dist;
+            res.rgb = ds.rgb;
+            break;
+        }
+        dist += ds.w;
+    }
+    if (res.w < -0.5) res.rgb = background(rd).rgb;
+
+    return res;
+}
+
 vec4 render(vec3 rd, vec2 uv) {
     const float far = 15.0;
     vec3 bh_origin = vec3(0.0, 0.0, 0.0);
+    float bh_bound_radius = 10.0;
 
     vec3 color = vec3(0.0, 0.0, 0.0);
     float alpha = 0.0;
     float dither = clamp(fract(sin(dot(uv, vec2(12.9898, 78.223))) * 43758.5453), 0.0, 1.0) * 2.0;
-    
-    vec3 raypos = camera_origin + rd * dither * far / float(ITERATIONS);
-    for (int i = 0; i < ITERATIONS; i++) {
+
+    float stepsize = MIN_STEP_SIZE;
+    float curvature;
+    float dist = 0.0;
+    float resdist = -1.0;
+    vec3 raypos = camera_origin + rd * dither * MIN_STEP_SIZE;
+    // raypos += rd * dither * sd_sphere(raypos - bh_origin, bh_bound_radius);
+    for (int i = 0; i < MAX_STEPS && dist <= MAX_DIST; i++) {
         // gravitational lensing
         float singularity_dist = distance(raypos, bh_origin);
         float warp_factor = 1.0 / (pow(singularity_dist, 2.0) + 0.000001);
         vec3 singularity_vec = normalize(bh_origin - raypos);
         float warp_amount = 5.0;
-        rd = normalize(rd + singularity_vec * warp_factor * warp_amount / float(ITERATIONS));
+        curvature = length(rd - singularity_vec);
+        rd = normalize(rd + singularity_vec * warp_factor * warp_amount / float(MAX_STEPS));
+        if (singularity_dist < bh_bound_radius) stepsize = MIN_STEP_SIZE;
+        else stepsize = max(singularity_dist / STEP_CURVATURE_FACTOR, MIN_STEP_SIZE);
+        // if (length(raypos - bh_origin) > bh_bound_radius) break;
         
         // accretion disc
-        raypos += rd * far / float(ITERATIONS);
         accretion_disc(color, alpha, raypos);
         haze(color, alpha, raypos);
+
+        // scene
+        // vec4 scene_dist = scene(raypos);
+        // if (abs(scene_dist.w) < (MIN_DIST * dist)) {
+        //     color += scene_dist.rgb;
+        //     resdist = scene_dist.w;
+        //     break;
+        // }
+        // dist += scene_dist.w;
+        raypos += rd * stepsize;
     }
-    // color *= 1.0 / float(ITERATIONS) / 1.0;
+    // color *= 1.0 / float(MAX_STEPS) / 1.0;
+    if (resdist < -0.5 && (alpha < 0.1 && length(raypos - bh_origin) > 0.5)) color += background(rd).rgb;
 
     color = pow(color, vec3(1.5));
     color = color / (1.0 + color);
@@ -304,7 +373,7 @@ vec4 render(vec3 rd, vec2 uv) {
     color = clamp(color * 1.01, 0.0, 1.0);
     color = pow(color, vec3(0.7 / 2.2));
 
-    color += (alpha > 0.1 || length(raypos - bh_origin) < 0.5) ? vec3(0.0) : background(rd).rgb;
+    // color += (alpha > 0.1 || length(raypos - bh_origin) < 0.5) ? vec3(0.0) : raymarch_scene(raypos, rd).rgb;
     return vec4(clamp(color, 0.0, 1.0), 1.0);
 }
 
