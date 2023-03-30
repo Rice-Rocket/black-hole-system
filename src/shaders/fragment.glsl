@@ -1,7 +1,7 @@
 #version 410
 
 #define MAX_STEPS 40
-#define MAX_DIST 128.0
+#define MAX_DIST 256.0
 #define MIN_DIST 0.01
 #define EPSILON 0.01
 #define PI 3.1415927
