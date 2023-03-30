@@ -21,8 +21,15 @@ fn set_camera() -> Camera {
 }
 
 fn input(cam: &mut Camera, held_keys: &[bool; 255], prev_keys: &[bool; 255]) {
-    let movement_speed = 0.04;
+    let mut movement_speed = 0.04;
     let rotate_speed = 0.03;
+
+    if held_keys[glutin::event::VirtualKeyCode::LShift as usize] {
+        movement_speed = 0.12;
+    }
+    if held_keys[glutin::event::VirtualKeyCode::LAlt as usize] {
+        movement_speed = 0.24;
+    }
 
     if held_keys[glutin::event::VirtualKeyCode::A as usize] {
         cam.move_x(movement_speed); }
@@ -45,7 +52,6 @@ fn input(cam: &mut Camera, held_keys: &[bool; 255], prev_keys: &[bool; 255]) {
         cam.rotate_y(rotate_speed); }
     if held_keys[glutin::event::VirtualKeyCode::Down as usize] {
         cam.rotate_y(-rotate_speed); }
-
 }
 
 
