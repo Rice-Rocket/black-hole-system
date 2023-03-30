@@ -335,7 +335,7 @@ vec4 render(vec3 rd, vec2 uv) {
     float resdist = -1.0;
     vec3 raypos = camera_origin + rd * dither * MIN_STEP_SIZE;
     // raypos += rd * dither * sd_sphere(raypos - bh_origin, bh_bound_radius);
-    for (int i = 0; i < MAX_STEPS && dist <= MAX_DIST; i++) {
+    for (int i = 0; i < MAX_STEPS; i++) {
         // gravitational lensing
         float singularity_dist = distance(raypos, bh_origin);
         float warp_factor = 1.0 / (pow(singularity_dist, 2.0) + 0.000001);
