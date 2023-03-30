@@ -327,7 +327,7 @@ vec4 render(vec3 rd, vec2 uv) {
 
     vec3 color = vec3(0.0, 0.0, 0.0);
     float alpha = 0.0;
-    float dither = clamp(fract(sin(dot(uv, vec2(12.9898, 78.223))) * 43758.5453), 0.0, 1.0) * 1.0;
+    float dither = clamp(fract(sin(dot(uv, vec2(12.9898, 78.223))) * 43758.5453), 0.0, 1.0) * 0.6;
 
     float stepsize = MIN_STEP_SIZE;
     float curvature;
