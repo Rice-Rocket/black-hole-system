@@ -262,7 +262,6 @@ void accretion_disc(inout vec3 color, inout float alpha, vec3 pos) {
     rad_coords.z = disc_dist * 1.5;
 
     rad_coords *= 0.95;
-    
     float speed = 1.0;
     
     float n1 = 1.0;
@@ -353,14 +352,14 @@ vec4 render(vec3 rd, vec2 uv) {
         haze(color, alpha, raypos);
 
         // scene
-        // vec4 scene_dist = scene(raypos);
-        // if (abs(scene_dist.w) < (MIN_DIST * dist)) {
-        //     color += scene_dist.rgb;
-        //     resdist = scene_dist.w;
-        //     break;
-        // }
-        // dist += scene_dist.w;
-        raypos += rd * stepsize;
+        vec4 scene_dist = scene(raypos);
+        if (abs(scene_dist.w) < (MIN_DIST * dist)) {
+            color += scene_dist.rgb;
+            resdist = dist;
+            break;
+        }
+        dist += scene_dist.w;
+        raypos += rd * min(scene_dist.w, stepsize);
     }
     // color *= 1.0 / float(MAX_STEPS) / 1.0;
     if (resdist < -0.5 && (alpha < 0.1 && length(raypos - bh_origin) > 0.5)) color += background(rd).rgb;
