@@ -296,7 +296,7 @@ void accretion_disc(inout vec3 color, inout float alpha, vec3 pos) {
 
 
 vec4 scene(vec3 p) {
-    vec4 res = vec4(1.0, 0.5, 0.25, sd_sphere(p - vec3(7.0, 1.0, 3.0), 0.2));
+    vec4 res = vec4(1.0, 0.0, 0.0, sd_sphere(p - vec3(7.0, 1.0, 3.0), 0.2));
     return res;
 }
 
